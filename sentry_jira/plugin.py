@@ -312,7 +312,9 @@ class JIRAPlugin(IssuePlugin):
         if not is_new:
             return False
 
-        if not self.get_option('auto_create', group.project):
+        create_on_fatal = self.get_option('auto_create_fatal', group.project) and event.get_tag('level') == 'fatal'
+
+        if not (self.get_option('auto_create', group.project) or create_on_fatal):
             return False
 
         # XXX(dcramer): Sentry doesn't expect GroupMeta referenced here so we
