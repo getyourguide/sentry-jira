@@ -56,6 +56,11 @@ class JIRAOptionsForm(forms.Form):
         help_text=_("Automatically create a JIRA ticket for EVERY new issue"),
         required=False
     )
+    auto_create_fatal = forms.BooleanField(
+        label=_("Auto create JIRA tickets for fatal errors"),
+        help_text=_("Automatically create a JIRA ticket for new issue with level=fatal"),
+        required=False
+    )
 
     def __init__(self, data=None, *args, **kwargs):
 
@@ -68,9 +73,11 @@ class JIRAOptionsForm(forms.Form):
         has_credentials = all(initial.get(k) for k in ('instance_url', 'username', 'password'))
         project_safe = False
         can_auto_create = False
+        can_auto_create_fatal = False
 
         # auto_create is not available on new configurations
         has_auto_create = 'auto_create' in initial
+        has_auto_create_fatal = 'auto_create_fatal' in initial
 
         if has_credentials:
             jira = JIRAClient(initial['instance_url'], initial['username'], initial['password'])
@@ -86,9 +93,10 @@ class JIRAOptionsForm(forms.Form):
                     project_choices = [(p.get('key'), "%s (%s)" % (p.get('name'), p.get('key'))) for p in projects]
                     project_safe = True
                     can_auto_create = True
+                    can_auto_create_fatal = True
                     self.fields["default_project"].choices = project_choices
 
-        if project_safe and has_auto_create:
+        if project_safe and (has_auto_create or has_auto_create_fatal):
             try:
                 priorities_response = jira.get_priorities()
             except JIRAError as e:
@@ -108,11 +116,13 @@ class JIRAOptionsForm(forms.Form):
                     if e.status_code == 401:
                         has_credentials = False
                     can_auto_create = False
+                    can_auto_create_fatal = False
                 else:
                     if meta:
                         self.fields["default_issue_type"].choices = JIRAFormUtils.make_choices(meta["issuetypes"])
                     else:
                         can_auto_create = False
+                        can_auto_create_fatal = False
 
         if not has_credentials:
             self.fields['password'].required = True
@@ -127,6 +137,9 @@ class JIRAOptionsForm(forms.Form):
 
         if not can_auto_create:
             del self.fields["auto_create"]
+
+        if not can_auto_create_fatal:
+            del self.fields["auto_create_fatal"]
 
     def clean_password(self):
         """
@@ -159,6 +172,14 @@ class JIRAOptionsForm(forms.Form):
         if not (cd.get('default_priority') and cd.get('default_issue_type')):
             raise ValidationError("Default priority and issue type must be configured.")
         return cd['auto_create']
+
+    def clean_auto_create_fatal(self):
+        cd = self.cleaned_data
+        if not cd.get('auto_create_fatal'):
+            return False
+        if not (cd.get('default_priority') and cd.get('default_issue_type')):
+            raise ValidationError("Default priority and issue type must be configured.")
+        return cd['auto_create_fatal']   
 
     def clean(self):
         """
